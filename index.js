@@ -1,6 +1,4 @@
-// server.ts
-
-import { serve } from "https://deno.land/std@0.114.0/http/server.ts";
+import { serve } from "https://deno.land/std@0.178.0/http/server.ts";
 
 // Home Page HTML for the input
 const homePage = `
@@ -52,19 +50,17 @@ const homePage = `
 </html>
 `;
 
-// Create the Deno server
-const server = serve({ port: 8080 });
-console.log("Server running on http://localhost:8080");
-
-for await (const req of server) {
+// Handler function for requests
+async function handleRequest(req: Request): Promise<Response> {
     try {
-        const url = new URL(req.url, `http://${req.headers.get("host")}`);
+        const url = new URL(req.url);
         const targetUrl = url.searchParams.get("url");
 
         // If no URL provided, show home page
         if (!targetUrl) {
-            req.respond({ body: homePage, headers: new Headers({ "Content-Type": "text/html" }) });
-            continue;
+            return new Response(homePage, {
+                headers: { "Content-Type": "text/html" },
+            });
         }
 
         // Fetch and proxy the target URL
@@ -72,8 +68,11 @@ for await (const req of server) {
         const body = await proxiedResponse.text();
         const headers = new Headers(proxiedResponse.headers);
 
-        req.respond({ body, headers });
+        return new Response(body, { headers });
     } catch (error) {
-        req.respond({ body: "Error fetching the URL", status: 500 });
+        return new Response("Error fetching the URL", { status: 500 });
     }
 }
+
+// Create the server
+serve(handleRequest);
