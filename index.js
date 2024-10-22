@@ -1,78 +1,65 @@
-import { serve } from "https://deno.land/std@0.178.0/http/server.ts";
+import express, { Request, Response } from 'express';
+import httpProxy from 'http-proxy';
+import fs from 'fs';
+import path from 'path';
 
-// Home Page HTML for the input
-const homePage = `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Web Proxy</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            background: #121212;
-            color: #fff;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            margin: 0;
-        }
-        input {
-            padding: 10px;
-            border: none;
-            border-radius: 5px;
-            width: 300px;
-        }
-        button {
-            padding: 10px 20px;
-            background-color: #03a9f4;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            margin-top: 10px;
-            cursor: pointer;
-        }
-        button:hover {
-            background-color: #0288d1;
-        }
-    </style>
-</head>
-<body>
-    <h1>Enter a URL to Proxy</h1>
-    <form action="/" method="GET">
-        <input type="text" name="url" placeholder="Enter a URL" required>
-        <button type="submit">Proxy</button>
-    </form>
-</body>
-</html>
-`;
+// Create Express app
+const app = express();
+const PORT = 3000;
 
-// Handler function for requests
-async function handleRequest(req: Request): Promise<Response> {
-    try {
-        const url = new URL(req.url);
-        const targetUrl = url.searchParams.get("url");
+// Create proxy server
+const proxy = httpProxy.createProxyServer({});
 
-        // If no URL provided, show home page
-        if (!targetUrl) {
-            return new Response(homePage, {
-                headers: { "Content-Type": "text/html" },
-            });
-        }
+// Log files path
+const searchLogsPath = path.join(__dirname, '../logs/Search Logs.txt');
+const errorLogsPath = path.join(__dirname, '../logs/Recent Error Logs.txt');
 
-        // Fetch and proxy the target URL
-        const proxiedResponse = await fetch(targetUrl);
-        const body = await proxiedResponse.text();
-        const headers = new Headers(proxiedResponse.headers);
+// Middleware to log user searches
+app.use((req: Request, res: Response, next) => {
+    const searchLog = `[${new Date().toISOString()}] Search URL: ${req.url}\n`;
+    fs.appendFileSync(searchLogsPath, searchLog, 'utf8');
+    next();
+});
 
-        return new Response(body, { headers });
-    } catch (error) {
-        return new Response("Error fetching the URL", { status: 500 });
+// Serve the homepage
+app.get('/', (req: Request, res: Response) => {
+    res.send(`
+        <html>
+            <head>
+                <title>Proxy Service</title>
+                <style>
+                    body { font-family: Arial, sans-serif; text-align: center; padding: 50px; background-color: #101820FF; color: #FEE715FF; }
+                    h1 { color: #FEE715FF; }
+                    input, button { padding: 10px; margin: 10px; font-size: 16px; }
+                </style>
+            </head>
+            <body>
+                <h1>Welcome to the Proxy Service</h1>
+                <form method="GET" action="/proxy">
+                    <input type="text" name="url" placeholder="Enter URL to proxy" required>
+                    <button type="submit">Proxy</button>
+                </form>
+            </body>
+        </html>
+    `);
+});
+
+// Proxy request handler
+app.get('/proxy', (req: Request, res: Response) => {
+    const targetUrl = req.query.url as string;
+
+    if (!targetUrl) {
+        return res.status(400).send('URL is required');
     }
-}
 
-// Create the server
-serve(handleRequest);
+    proxy.web(req, res, { target: targetUrl }, (err) => {
+        const errorLog = `[${new Date().toISOString()}] Error: ${err.message}\n`;
+        fs.appendFileSync(errorLogsPath, errorLog, 'utf8');
+        res.status(500).send('Error occurred while proxying the request.');
+    });
+});
+
+// Start server
+app.listen(PORT, () => {
+    console.log(`Proxy server running on http://localhost:${PORT}`);
+});
